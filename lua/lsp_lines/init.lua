@@ -25,9 +25,7 @@ local function render_current_line(diagnostics, ns, bufnr, opts)
       bufnr,
       not_current_line_diag,
       opts.virtual_lines.only_current_line.virtual_text,
-      nil,
-      "virt_text",
-      false
+      { area = "virt_text", clear = false }
     )
   end
 end
