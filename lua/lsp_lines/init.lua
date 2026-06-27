@@ -41,7 +41,6 @@ end
 -- This should usually only be called once, during initialisation.
 M.setup = function()
   vim.api.nvim_create_augroup("LspLines", { clear = true })
-  -- TODO: On LSP restart (e.g.: diagnostics cleared), errors don't go away.
   vim.diagnostic.handlers.virtual_lines = {
     ---@param namespace number
     ---@param bufnr number
