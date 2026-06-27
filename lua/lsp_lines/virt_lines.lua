@@ -45,6 +45,38 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
   if type(prefix) == "function" then
     prefix_resolver = prefix
   end
+
+  -- Whole-file diagnostics (anchored at the very start of the buffer) have no
+  -- meaningful column to align under, so render them as plain prefixed lines at
+  -- the top instead of drawing nonsensical tree glyphs.
+  local whole_file = {}
+  local positioned = {}
+  for _, diagnostic in ipairs(diagnostics) do
+    if diagnostic.lnum == 0 and diagnostic.col == 0 then
+      table.insert(whole_file, diagnostic)
+    else
+      table.insert(positioned, diagnostic)
+    end
+  end
+
+  if #whole_file > 0 then
+    local virt_lines = {}
+    for _, diagnostic in ipairs(whole_file) do
+      local hi = highlight_groups[diagnostic.severity]
+      for msg_line in diagnostic.message:gmatch("([^\n]+)") do
+        local vline = {}
+        -- Consume resolved_prefix exactly like the main stacking loop does
+        -- (via list_extend), so custom prefix resolvers behave identically here.
+        vim.list_extend(vline, prefix_resolver(diagnostic))
+        vim.list_extend(vline, { { " " .. msg_line, hi } })
+        table.insert(virt_lines, vline)
+      end
+    end
+    vim.api.nvim_buf_set_extmark(bufnr, namespace, 0, 0, { virt_lines = virt_lines, virt_lines_above = true })
+  end
+
+  diagnostics = positioned
+
   for _, diagnostic in ipairs(diagnostics) do
     if line_stacks[diagnostic.lnum] == nil then
       line_stacks[diagnostic.lnum] = {}
