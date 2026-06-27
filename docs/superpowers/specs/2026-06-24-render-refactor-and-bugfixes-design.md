@@ -148,6 +148,22 @@ and embedded newlines as inconsistently handled in virt_text.
 `\r` and `\n` (and runs thereof) into single spaces consistently in one place, so
 multiline messages render as one flattened virt_text chunk.
 
+### Bug 6 — default `prefix` crashes the virt_lines renderer (found during implementation)
+
+Discovered while verifying the refactor: with the **default** string `prefix` (i.e. no
+custom resolver function), the virt_lines renderer crashes with
+`Invalid 'chunk': expected Array, got String`. The consuming code treats the
+resolver's return value as a *list of chunks* (`for _, part in pairs(resolved_prefix)
+do ... part[1] ...` then `vim.list_extend(center, resolved_prefix)`), but the default
+resolver returned a *flat* `{ text, hl }` pair, so `list_extend` appended bare strings
+that Neovim rejects. Confirmed pre-existing (the unrefactored upstream code crashes
+identically); it was masked because real configs pass a `prefix` function that already
+returns a list of chunks.
+
+**Fix:** the default virt_lines resolver returns `{ { prefix, hl } }` (a list of one
+chunk), matching the contract the consuming code already assumes. The virt_text path is
+unaffected (it inserts the pair as a single chunk and is correct as-is).
+
 ### Bug 5 — `only_count` severity-count logic
 
 `render.lua:287-305`: contains empty `else` branches and counts the "best" severity

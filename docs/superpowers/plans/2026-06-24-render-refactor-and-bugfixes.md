@@ -400,6 +400,64 @@ git commit -m "refactor: update init.lua to the ctx-table render API"
 
 ---
 
+## Task 5b: Bug 6 — default virt_lines `prefix` must resolve to a list of chunks
+
+> Added during execution after the Task 5 smoke test exposed a pre-existing crash.
+
+**Files:**
+- Modify: `lua/lsp_lines/virt_lines.lua` (`M.render` default `prefix_resolver`)
+
+**Problem:** with the default string `prefix` (no custom resolver), virt_lines crashes
+with `Invalid 'chunk': expected Array, got String`. The consuming code
+(`for ... part[1] ...` and `vim.list_extend(center, resolved_prefix)`) expects a list of
+chunks, but the default resolver returned a flat `{ text, hl }` pair.
+
+- [ ] **Step 1: Wrap the default resolver's pair in a list**
+
+Change:
+
+```lua
+  local prefix_resolver = function(diagnostic)
+    return { prefix, highlight_groups[diagnostic.severity] }
+  end
+```
+
+to:
+
+```lua
+  local prefix_resolver = function(diagnostic)
+    return { { prefix, highlight_groups[diagnostic.severity] } }
+  end
+```
+
+Leave the `if type(prefix) == "function" then prefix_resolver = prefix end` line
+untouched — user functions already return a list of chunks.
+
+- [ ] **Step 2: Verify default prefix no longer crashes**
+
+```bash
+nvim --headless --cmd "set rtp+=$(pwd)" -c "lua
+  local vl = require('lsp_lines.virt_lines')
+  local ns = vim.api.nvim_create_namespace('t5b')
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, {'local x = 1'})
+  vl.render(ns, buf, { { lnum = 0, col = 6, end_lnum = 0, end_col = 7, severity = vim.diagnostic.severity.ERROR, message = 'boom', bufnr = buf } }, { virtual_lines = {} }, 'native')
+  assert(#vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) == 1)
+  print('OK default-prefix marks=1')
+" -c "qa!" 2>&1
+```
+
+Expected: `OK default-prefix marks=1`, no `Invalid 'chunk'` error.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add lua/lsp_lines/virt_lines.lua
+git commit -m "fix: default virt_lines prefix must resolve to a list of chunks"
+```
+
+---
+
 ## Task 6: Bug 1 — virt_text must not abort on a blank-message line
 
 **Files:**

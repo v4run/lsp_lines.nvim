@@ -1,3 +1,3 @@
-- For entries where column 0 is the issue, the lines don't make sense. This is
-  evident for diagnostics for (col=0, row=0), which are usually meant to refer
-  to the entire file.
+<!-- Resolved 2026-06: whole-file (col=0, row=0) diagnostics are now rendered as
+plain prefixed lines at the top of the buffer instead of nonsensical tree glyphs.
+See lua/lsp_lines/virt_lines.lua (whole-file partition in M.render). -->
