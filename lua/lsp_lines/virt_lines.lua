@@ -40,7 +40,7 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
   local highlight_groups = HIGHLIGHTS[source or "native"]
   local prefix = opts.virtual_lines.prefix or "■"
   local prefix_resolver = function(diagnostic)
-    return { prefix, highlight_groups[diagnostic.severity] }
+    return { { prefix, highlight_groups[diagnostic.severity] } }
   end
   if type(prefix) == "function" then
     prefix_resolver = prefix
