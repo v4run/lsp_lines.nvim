@@ -85,16 +85,14 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
         local severity = severities[i]
         local ds = diags[severity]
         if ds then
+          -- The diagnostic shown as `best` is already displayed, so its own
+          -- severity contributes one fewer to the overflow count.
           local count = #ds
-          if count ~= nil then
-            if severity ~= best.diagnostic.severity then
-              table.insert(virt_texts, { string.format("[+%d] ", count), highlight_groups[severity] })
-            elseif severity == best.diagnostic.severity then
-              if count > 1 then
-                table.insert(virt_texts, { string.format("[+%d] ", count - 1), highlight_groups[severity] })
-              end
-            else
-            end
+          if severity == best.diagnostic.severity then
+            count = count - 1
+          end
+          if count > 0 then
+            table.insert(virt_texts, { string.format("[+%d] ", count), highlight_groups[severity] })
           end
         end
       end
