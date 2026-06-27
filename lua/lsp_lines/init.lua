@@ -70,7 +70,10 @@ M.setup = function()
         vim.api.nvim_create_autocmd("CursorMoved", {
           buffer = bufnr,
           callback = function()
-            render_current_line(diagnostics, ns.user_data.virt_lines_ns, bufnr, opts)
+            -- Re-fetch live diagnostics so entries cleared by an LSP restart
+            -- actually disappear instead of replaying a stale closed-over list.
+            local live = vim.diagnostic.get(bufnr, { namespace = namespace })
+            render_current_line(live, ns.user_data.virt_lines_ns, bufnr, opts)
           end,
           group = "LspLines",
         })
