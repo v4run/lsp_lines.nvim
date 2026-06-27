@@ -12,6 +12,11 @@ local M = {}
 function M.render(namespace, bufnr, diagnostics, opts, source)
   local highlight_groups = HIGHLIGHTS[source or "native"]
   opts = opts or {}
+  -- Collapse any embedded carriage returns / newlines (and runs of them) into a
+  -- single space so multiline messages render as one flattened virt_text chunk.
+  local function flatten(message)
+    return (message:gsub("[\r\n]+", " "):gsub("%s+$", ""))
+  end
   local line_diagnostics = {}
   local line_count = vim.api.nvim_buf_line_count(bufnr)
 
@@ -53,7 +58,7 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
         for _, diagnostic in ipairs(diags[severity]) do
           local resolved_prefix = prefix_resolver(diagnostic, index, #diags)
           if best == nil then
-            if diagnostic.message:gsub("%s+$", "") ~= "" then
+            if flatten(diagnostic.message) ~= "" then
               best = { prefix = resolved_prefix, diagnostic = diagnostic }
             end
           else
@@ -72,7 +77,7 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
     end
     table.insert(virt_texts, best.prefix)
     table.insert(virt_texts, {
-      string.format(" %s ", best.diagnostic.message:gsub("\r", ""):gsub("\n", " ")),
+      string.format(" %s ", flatten(best.diagnostic.message)),
       highlight_groups[best.diagnostic.severity],
     })
     if only_count then
