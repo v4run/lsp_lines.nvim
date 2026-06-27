@@ -67,8 +67,8 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
     end
 
     if best == nil then
-      -- For some reason best is nil. This should not happen unless there is an undefined diagnostic severity
-      return
+      -- Every diagnostic on this line had a blank message; skip just this line.
+      goto continue
     end
     table.insert(virt_texts, best.prefix)
     table.insert(virt_texts, {
@@ -103,6 +103,7 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
         { virt_text = virt_texts }
       )
     end
+    ::continue::
   end
 end
 
