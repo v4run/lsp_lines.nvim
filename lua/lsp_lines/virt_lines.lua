@@ -1,4 +1,6 @@
-local HIGHLIGHTS = require("lsp_lines.highlights").HIGHLIGHTS
+local highlights = require("lsp_lines.highlights")
+local HIGHLIGHTS = highlights.HIGHLIGHTS
+local SEVERITIES = highlights.severities
 
 local M = {}
 
@@ -7,6 +9,62 @@ local SPACE = "space"
 local DIAGNOSTIC = "diagnostic"
 local OVERLAP = "overlap"
 local BLANK = "blank"
+
+-- Single-letter labels used by the `only_count` overflow counts (e.g. "[+2 W]").
+local SEVERITY_LABELS = {
+  [vim.diagnostic.severity.ERROR] = "E",
+  [vim.diagnostic.severity.WARN] = "W",
+  [vim.diagnostic.severity.INFO] = "I",
+  [vim.diagnostic.severity.HINT] = "H",
+}
+
+-- When `only_count` is enabled, collapse each line's diagnostics to the single
+-- highest-severity one and return per-severity overflow count chunks keyed by
+-- the kept diagnostic. Returns the reduced diagnostic list and the count map.
+local function collapse_to_counts(diagnostics, highlight_groups)
+  local by_line = {}
+  for _, d in ipairs(diagnostics) do
+    by_line[d.lnum] = by_line[d.lnum] or {}
+    table.insert(by_line[d.lnum], d)
+  end
+
+  local reduced = {}
+  local counts_by_diag = {}
+  for _, line_diags in pairs(by_line) do
+    -- Highest severity wins (lower severity number == more severe); ties broken
+    -- by the earliest column so the kept diagnostic aligns under the same spot.
+    local best = line_diags[1]
+    local per_severity = {}
+    for _, d in ipairs(line_diags) do
+      per_severity[d.severity] = (per_severity[d.severity] or 0) + 1
+      if d.severity < best.severity or (d.severity == best.severity and d.col < best.col) then
+        best = d
+      end
+    end
+
+    local chunks = {}
+    for _, severity in ipairs(SEVERITIES) do
+      local count = per_severity[severity]
+      if count then
+        -- The kept diagnostic is already shown, so its severity has one fewer.
+        if severity == best.severity then
+          count = count - 1
+        end
+        if count > 0 then
+          table.insert(
+            chunks,
+            { string.format(" [+%d %s]", count, SEVERITY_LABELS[severity]), highlight_groups[severity] }
+          )
+        end
+      end
+    end
+
+    counts_by_diag[best] = chunks
+    table.insert(reduced, best)
+  end
+
+  return reduced, counts_by_diag
+end
 
 ---Returns the distance between two columns in cells.
 ---
@@ -76,6 +134,14 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
   end
 
   diagnostics = positioned
+
+  -- When enabled, keep only the highest-severity diagnostic per line and append
+  -- per-severity overflow counts to its message (counts_by_diag is empty/no-op
+  -- otherwise).
+  local counts_by_diag = {}
+  if opts.virtual_lines and opts.virtual_lines.only_count then
+    diagnostics, counts_by_diag = collapse_to_counts(diagnostics, highlight_groups)
+  end
 
   for _, diagnostic in ipairs(diagnostics) do
     if line_stacks[diagnostic.lnum] == nil then
@@ -183,11 +249,20 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
         -- d. Is not an overlap.
 
         local msg = diagnostic.message
+        local count_chunks = counts_by_diag[diagnostic]
+        local msg_lines = {}
         for msg_line in msg:gmatch("([^\n]+)") do
+          table.insert(msg_lines, msg_line)
+        end
+        for idx, msg_line in ipairs(msg_lines) do
           local vline = {}
           vim.list_extend(vline, left)
           vim.list_extend(vline, center)
           vim.list_extend(vline, { { msg_line, highlight_groups[diagnostic.severity] } })
+          -- Overflow counts go after the message on its final line.
+          if count_chunks and idx == #msg_lines then
+            vim.list_extend(vline, count_chunks)
+          end
           vim.list_extend(
             vline,
             { { string.rep(" ", vim.api.nvim_win_get_width(0)), highlight_groups[diagnostic.severity] } }
