@@ -104,13 +104,22 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
     prefix_resolver = prefix
   end
 
-  -- Whole-file diagnostics (anchored at the very start of the buffer) have no
-  -- meaningful column to align under, so render them as plain prefixed lines at
-  -- the top instead of drawing nonsensical tree glyphs.
+  -- Whole-file diagnostics (anchored at the very start of the buffer with no
+  -- extent) have no meaningful column to align under, so render them as plain
+  -- prefixed lines at the top instead of drawing nonsensical tree glyphs.
+  -- A diagnostic on the first *token* of the file ((0,0) with end_col > 0) has a
+  -- real column to point at and must render normally.
+  local function is_whole_file(d)
+    return d.lnum == 0
+      and d.col == 0
+      and (d.end_lnum == nil or d.end_lnum == 0)
+      and (d.end_col == nil or d.end_col == 0)
+  end
+
   local whole_file = {}
   local positioned = {}
   for _, diagnostic in ipairs(diagnostics) do
-    if diagnostic.lnum == 0 and diagnostic.col == 0 then
+    if is_whole_file(diagnostic) then
       table.insert(whole_file, diagnostic)
     else
       table.insert(positioned, diagnostic)

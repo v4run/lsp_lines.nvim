@@ -100,5 +100,78 @@ check("only_count: collapses the line to a single virtual line", vlines == 1, "v
 local _, vlines_full = render(false)
 check("control: without only_count, all diagnostics still stack", vlines_full == 4, "vlines=" .. vlines_full)
 
+-- A normal diagnostic on the first token (0,0)-(0,N) must NOT be mistaken for a
+-- whole-file diagnostic; it should collapse with the rest of its line.
+do
+  local ns = vim.api.nvim_create_namespace("occol0")
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "part appnd pars" })
+  vim.api.nvim_set_current_buf(buf)
+  virt_lines.render(ns, buf, {
+    {
+      lnum = 0,
+      col = 0,
+      end_lnum = 0,
+      end_col = 4,
+      severity = vim.diagnostic.severity.ERROR,
+      message = "undefined: part",
+      bufnr = buf,
+    },
+    {
+      lnum = 0,
+      col = 5,
+      end_lnum = 0,
+      end_col = 10,
+      severity = vim.diagnostic.severity.ERROR,
+      message = "undefined: appnd",
+      bufnr = buf,
+    },
+    {
+      lnum = 0,
+      col = 11,
+      end_lnum = 0,
+      end_col = 15,
+      severity = vim.diagnostic.severity.ERROR,
+      message = "undefined: pars",
+      bufnr = buf,
+    },
+  }, { virtual_lines = { only_count = true } }, "native")
+  local marks = vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })
+  local n, text = 0, ""
+  for _, m in ipairs(marks) do
+    if m[4].virt_lines then
+      for _, vline in ipairs(m[4].virt_lines) do
+        n = n + 1
+        for _, c in ipairs(vline) do
+          if type(c[1]) == "string" then
+            text = text .. c[1]
+          end
+        end
+      end
+    end
+  end
+  check("first-token (0,0) diagnostic collapses to one line", n == 1, "vlines=" .. n)
+  check("first-token (0,0) line shows the [+2 E] count", text:find("%[%+2 E%]") ~= nil, text)
+end
+
+-- A true whole-file diagnostic (0,0 with no extent) still renders at the top.
+do
+  local ns = vim.api.nvim_create_namespace("ocwf")
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "code here", "more code" })
+  vim.api.nvim_set_current_buf(buf)
+  virt_lines.render(ns, buf, {
+    { lnum = 0, col = 0, severity = vim.diagnostic.severity.ERROR, message = "whole file broken", bufnr = buf },
+  }, { virtual_lines = {} }, "native")
+  local marks = vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })
+  local has_above = false
+  for _, m in ipairs(marks) do
+    if m[4].virt_lines and m[4].virt_lines_above then
+      has_above = true
+    end
+  end
+  check("whole-file (0,0 no extent) still renders above", has_above)
+end
+
 print(string.format("\n%d failure(s)", failures))
 os.exit(failures == 0 and 0 or 1)
