@@ -154,6 +154,76 @@ do
   check("first-token (0,0) line shows the [+2 E] count", text:find("%[%+2 E%]") ~= nil, text)
 end
 
+-- Cursor-aware selection: when the cursor sits within a diagnostic's column
+-- range on the line, that diagnostic's message is the one shown.
+do
+  local ns = vim.api.nvim_create_namespace("occursor")
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "aaaaa bbbbb ccccc" })
+  vim.api.nvim_set_current_buf(buf)
+  local diags = {
+    {
+      lnum = 0,
+      col = 0,
+      end_lnum = 0,
+      end_col = 5,
+      severity = vim.diagnostic.severity.ERROR,
+      message = "first",
+      bufnr = buf,
+    },
+    {
+      lnum = 0,
+      col = 6,
+      end_lnum = 0,
+      end_col = 11,
+      severity = vim.diagnostic.severity.ERROR,
+      message = "second",
+      bufnr = buf,
+    },
+    {
+      lnum = 0,
+      col = 12,
+      end_lnum = 0,
+      end_col = 17,
+      severity = vim.diagnostic.severity.ERROR,
+      message = "third",
+      bufnr = buf,
+    },
+  }
+  local function render_at(col)
+    vim.api.nvim_win_set_cursor(0, { 1, col })
+    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    virt_lines.render(ns, buf, diags, { virtual_lines = { only_count = true } }, "native")
+    local text = ""
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+      if m[4].virt_lines then
+        for _, line in ipairs(m[4].virt_lines) do
+          for _, c in ipairs(line) do
+            if type(c[1]) == "string" then
+              text = text .. c[1]
+            end
+          end
+        end
+      end
+    end
+    return text
+  end
+
+  local t = render_at(7) -- inside "bbbbb" (cols 6..11)
+  check("cursor on 2nd diagnostic shows its message", t:find("second") ~= nil and t:find("first") == nil, t)
+  check("cursor-matched line still counts the rest", t:find("%[%+2 E%]") ~= nil, t)
+
+  t = render_at(13) -- inside "ccccc" (cols 12..17)
+  check("cursor on 3rd diagnostic shows its message", t:find("third") ~= nil, t)
+
+  t = render_at(5) -- the space between "aaaaa" and "bbbbb" -> no match -> fallback
+  check(
+    "cursor in a gap falls back to highest-severity (leftmost)",
+    t:find("first") ~= nil and t:find("second") == nil,
+    t
+  )
+end
+
 -- A true whole-file diagnostic (0,0 with no extent) still renders at the top.
 do
   local ns = vim.api.nvim_create_namespace("ocwf")

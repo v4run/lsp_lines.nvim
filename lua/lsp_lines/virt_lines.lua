@@ -18,10 +18,21 @@ local SEVERITY_LABELS = {
   [vim.diagnostic.severity.HINT] = "H",
 }
 
--- When `only_count` is enabled, collapse each line's diagnostics to the single
--- highest-severity one and return per-severity overflow count chunks keyed by
--- the kept diagnostic. Returns the reduced diagnostic list and the count map.
-local function collapse_to_counts(diagnostics, highlight_groups)
+-- Returns the exclusive upper column bound that a diagnostic covers on its
+-- starting line (math.huge when it spans onto later lines).
+local function upper_col(d)
+  if d.end_lnum and d.end_lnum > d.lnum then
+    return math.huge
+  end
+  return d.end_col or (d.col + 1)
+end
+
+-- When `only_count` is enabled, collapse each line's diagnostics to a single one
+-- and return per-severity overflow count chunks keyed by the kept diagnostic.
+-- The kept diagnostic is the highest severity (ties: earliest column), except on
+-- the line the cursor is on: if the cursor sits within a diagnostic's column
+-- range, that diagnostic is shown instead. Returns reduced list and count map.
+local function collapse_to_counts(diagnostics, highlight_groups, cursor)
   local by_line = {}
   for _, d in ipairs(diagnostics) do
     by_line[d.lnum] = by_line[d.lnum] or {}
@@ -30,7 +41,7 @@ local function collapse_to_counts(diagnostics, highlight_groups)
 
   local reduced = {}
   local counts_by_diag = {}
-  for _, line_diags in pairs(by_line) do
+  for lnum, line_diags in pairs(by_line) do
     -- Highest severity wins (lower severity number == more severe); ties broken
     -- by the earliest column so the kept diagnostic aligns under the same spot.
     local best = line_diags[1]
@@ -39,6 +50,24 @@ local function collapse_to_counts(diagnostics, highlight_groups)
       per_severity[d.severity] = (per_severity[d.severity] or 0) + 1
       if d.severity < best.severity or (d.severity == best.severity and d.col < best.col) then
         best = d
+      end
+    end
+
+    -- On the cursor's line, prefer the diagnostic under the cursor column
+    -- (highest severity among matches, then the narrowest/most specific range).
+    if cursor and cursor.lnum == lnum then
+      local match, match_span
+      for _, d in ipairs(line_diags) do
+        local upper = upper_col(d)
+        if cursor.col >= d.col and cursor.col < upper then
+          local span = upper - d.col
+          if match == nil or d.severity < match.severity or (d.severity == match.severity and span < match_span) then
+            match, match_span = d, span
+          end
+        end
+      end
+      if match then
+        best = match
       end
     end
 
@@ -149,7 +178,16 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
   -- otherwise).
   local counts_by_diag = {}
   if opts.virtual_lines and opts.virtual_lines.only_count then
-    diagnostics, counts_by_diag = collapse_to_counts(diagnostics, highlight_groups)
+    -- If this buffer is the one in the current window, let the cursor's column
+    -- pick which diagnostic the collapsed line shows (updates live in
+    -- only_current_line mode, which re-renders on CursorMoved).
+    local cursor
+    local win = vim.api.nvim_get_current_win()
+    if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == bufnr then
+      local pos = vim.api.nvim_win_get_cursor(win)
+      cursor = { lnum = pos[1] - 1, col = pos[2] }
+    end
+    diagnostics, counts_by_diag = collapse_to_counts(diagnostics, highlight_groups, cursor)
   end
 
   for _, diagnostic in ipairs(diagnostics) do
