@@ -125,6 +125,8 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
   local prev_lnum = -1
   local prev_col = 0
   local highlight_groups = HIGHLIGHTS[source or "native"]
+  -- Constant for the whole render; built once instead of per message line.
+  local fill = string.rep(" ", vim.api.nvim_win_get_width(0))
   local prefix = opts.virtual_lines.prefix or "■"
   local prefix_resolver = function(diagnostic)
     return { { prefix, highlight_groups[diagnostic.severity] } }
@@ -310,10 +312,7 @@ function M.render(namespace, bufnr, diagnostics, opts, source)
           if count_chunks and idx == #msg_lines then
             vim.list_extend(vline, count_chunks)
           end
-          vim.list_extend(
-            vline,
-            { { string.rep(" ", vim.api.nvim_win_get_width(0)), highlight_groups[diagnostic.severity] } }
-          )
+          vim.list_extend(vline, { { fill, highlight_groups[diagnostic.severity] } })
 
           table.insert(virt_lines, vline)
 
